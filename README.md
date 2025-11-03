@@ -41,7 +41,7 @@ pip install -r requirements.txt
 
 O usando un entorno virtual:
 ```
-python -m venv venv; .\venv\Scripts\Activate.ps1; pip install -r requirements.txt
+python -m venv venv; .\\venv\\Scripts\\Activate.ps1; pip install -r requirements.txt
 ```
 
 ## Cómo ejecutar
