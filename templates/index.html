@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Analizador de Piel</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.12/cropper.min.css" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.12/cropper.min.js"></script>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; background-color: #f0f2f5; margin: 0; padding: 1rem 0; }
+        #app-container { background-color: white; padding: 2rem; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); text-align: center; max-width: 600px; width: 90%; transition: all 0.3s ease; }
+        h1 { color: #333; }
+        h2 { margin-top: 1.5rem; }
+        p { color: #666; line-height: 1.5; }
+        .button-group button { font-size: 1rem; padding: 12px 24px; margin: 0.5rem; border: none; border-radius: 8px; cursor: pointer; transition: background-color 0.2s; }
+        #gallery-btn { background-color: #007bff; color: white; width: 80%; }
+        #crop-btn { background-color: #28a745; color: white; }
+        #restart-btn { background-color: #6c757d; color: white; }
+        .button-group button:hover { opacity: 0.9; }
+        #cropper-container { width: 100%; max-width: 500px; height: auto; margin: 1rem 0; }
+        #image-to-crop { max-width: 100%; display: block; }
+        #loading-spinner { border: 4px solid #f3f3f3; border-top: 4px solid #3498db; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 1rem auto; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        #result-category { font-size: 2.5rem; margin: 1rem 0; }
+        #processing-steps, #result-plot { margin-top: 2rem; border-top: 1px solid #eee; padding-top: 1.5rem; }
+        .step { margin-bottom: 1.5rem; }
+        .step img, #result-plot img { max-width: 100%; border-radius: 8px; box-shadow: 0 2px 6px rgba(0,0,0,0.08); }
+        .disclaimer { font-size: 0.8rem; color: #888; border-top: 1px solid #eee; padding-top: 1rem; margin-top: 1.5rem; }
+    </style>
+</head>
+<body>
+    <div id="app-container">
+        <div id="initial-view">
+            <h1>Analizador de Piel 🔬</h1>
+            <p>Sube una imagen desde tu galería o usa la cámara para tomar una foto de un lunar o imperfección en la piel.</p>
+            <div class="button-group">
+                <button id="gallery-btn">🖼️ Seleccionar Imagen</button>
+            </div>
+            <input type="file" id="gallery-input" accept="image/*" style="display:none;">
+        </div>
+
+        <div id="cropper-view" style="display:none;">
+            <h2>Recorta la Imagen</h2>
+            <p>Ajusta el recuadro para que contenga únicamente el lunar y su área circundante. Debe ser un cuadrado.</p>
+            <div id="cropper-container">
+                <img id="image-to-crop">
+            </div>
+            <div class="button-group">
+                <button id="crop-btn">✅ Recortar y Analizar</button>
+                <button id="cancel-btn">❌ Cancelar</button>
+            </div>
+        </div>
+
+        <div id="loading-view" style="display:none;">
+            <h2>Analizando...</h2>
+            <p>Esto puede tomar un momento. Estamos procesando la imagen.</p>
+            <div id="loading-spinner"></div>
+        </div>
+        
+        <div id="results-view" style="display:none;">
+            <h2>Resultado del Análisis</h2>
+            <h3 id="result-category"></h3>
+            <p id="result-probability"></p>
+
+            <div id="result-plot"></div>
+
+            <div id="processing-steps">
+                <h2>Pasos del Procesamiento</h2>
+            </div>
+            
+            <div class="button-group">
+                <button id="restart-btn">🔄 Analizar Otro</button>
+            </div>
+            <p class="disclaimer"><strong>ADVERTENCIA:</strong> Esta es una herramienta experimental y no un diagnóstico médico. Los resultados son una orientación basada en un conjunto de datos limitado. Consulte a un dermatólogo para cualquier preocupación de salud.</p>
+        </div>
+    </div>
+
+    <script>
+        const initialView = document.getElementById('initial-view');
+        const cropperView = document.getElementById('cropper-view');
+        const loadingView = document.getElementById('loading-view');
+        const resultsView = document.getElementById('results-view');
+
+        const galleryBtn = document.getElementById('gallery-btn');
+        const galleryInput = document.getElementById('gallery-input');
+        const cropBtn = document.getElementById('crop-btn');
+        const cancelBtn = document.getElementById('cancel-btn');
+        const restartBtn = document.getElementById('restart-btn');
+
+        const imageToCrop = document.getElementById('image-to-crop');
+        const processingStepsContainer = document.getElementById('processing-steps');
+        const resultPlotContainer = document.getElementById('result-plot');
+        
+        let cropper = null;
+
+        function showView(viewName) {
+            [initialView, cropperView, loadingView, resultsView].forEach(v => v.style.display = 'none');
+            document.getElementById(`${viewName}-view`).style.display = 'block';
+        }
+
+        async function analyzeImage(blob) {
+            showView('loading');
+            const formData = new FormData();
+            formData.append('image', blob, 'capture.jpg');
+
+            try {
+                const response = await fetch('/analyze', { method: 'POST', body: formData });
+                if (!response.ok) throw new Error(`Error del servidor: ${response.statusText}`);
+                
+                const result = await response.json();
+
+                // Limpiar contenedores de resultados anteriores
+                processingStepsContainer.innerHTML = '<h2>Pasos del Procesamiento</h2>';
+                resultPlotContainer.innerHTML = '';
+
+                // Mostrar resultados principales
+                document.getElementById('result-category').textContent = result.category;
+                document.getElementById('result-probability').textContent = `Probabilidad de malignidad: ${result.probability}%`;
+
+                // Mostrar el gráfico de dispersión
+                const plotImg = document.createElement('img');
+                plotImg.src = `data:image/png;base64,${result.plot}`;
+                resultPlotContainer.appendChild(plotImg);
+
+                // Mostrar los pasos del procesamiento
+                for (const [name, base64Img] of Object.entries(result.steps)) {
+                    const stepDiv = document.createElement('div');
+                    stepDiv.className = 'step';
+                    const title = document.createElement('h4');
+                    title.textContent = name;
+                    const stepImg = document.createElement('img');
+                    stepImg.src = `data:image/jpeg;base64,${base64Img}`;
+                    stepDiv.appendChild(title);
+                    stepDiv.appendChild(stepImg);
+                    processingStepsContainer.appendChild(stepDiv);
+                }
+                
+                showView('results');
+
+            } catch (error) {
+                alert("Ocurrió un error al analizar la imagen. Inténtalo de nuevo.");
+                console.error("Error de análisis:", error);
+                showView('initial');
+            }
+        }
+
+        // --- Event Listeners ---
+        galleryBtn.addEventListener('click', () => galleryInput.click());
+        
+        galleryInput.addEventListener('change', (event) => {
+            const file = event.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    imageToCrop.src = e.target.result;
+                    showView('cropper');
+                    if(cropper) cropper.destroy();
+                    cropper = new Cropper(imageToCrop, {
+                        aspectRatio: 1, // Forzar un recorte cuadrado
+                        viewMode: 1,
+                        background: false,
+                    });
+                };
+                reader.readAsDataURL(file);
+            }
+        });
+
+        cropBtn.addEventListener('click', () => {
+            if (!cropper) return;
+            // Obtener el canvas recortado con un tamaño fijo para consistencia
+            const croppedCanvas = cropper.getCroppedCanvas({
+                width: 512,
+                height: 512,
+            });
+
+            croppedCanvas.toBlob(blob => {
+                if (blob) {
+                    analyzeImage(blob);
+                }
+            }, 'image/jpeg');
+        });
+
+        cancelBtn.addEventListener('click', () => {
+            if(cropper) cropper.destroy();
+            galleryInput.value = ''; // Limpiar el input
+            showView('initial');
+        });
+        
+        restartBtn.addEventListener('click', () => {
+            if(cropper) cropper.destroy();
+            galleryInput.value = '';
+            showView('initial');
+        });
+
+    </script>
+</body>
+</html>
