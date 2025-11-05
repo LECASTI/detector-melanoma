@@ -53,8 +53,6 @@ python app.py
 ```
 4. Abrir el navegador en la dirección que `app.py` indique (por ejemplo `http://127.0.0.1:5000`).
 
-(Si `app.py` requiere variables de entorno o configuración adicional, revisa su cabecera y actualiza estas instrucciones en consecuencia.)
-
 ## Reproducir el pipeline de preprocesamiento
 - Abrir `S21002378-Challenge4-Melanoma.ipynb` y ejecutar las celdas en orden. El notebook documenta el enmascarado y la preparación de imágenes.
 
